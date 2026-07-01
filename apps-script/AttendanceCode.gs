@@ -19,6 +19,11 @@ var SHEET_NAME = "Attendance";
 var PHOTO_FOLDER_NAME = "AMCRO Attendance Photos";
 var HEADERS = ["Name", "Site Name", "On Duty Timing", "Picture at Start (PAS)", "Off Duty Timing", "Picture at End (PAE)", "Date"];
 
+// Normalizes text before comparing, so "Ramesh " vs "ramesh" vs "Ramesh" all match.
+function norm(s) {
+  return String(s || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
 function getSheet() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(SHEET_NAME);
@@ -80,7 +85,7 @@ function markOnDuty(sheet, data) {
 
   // Block duplicate on-duty for the same person+site+day (row is "open" if Off Duty Timing is blank)
   for (var i = 1; i < values.length; i++) {
-    if (values[i][0] === name && values[i][1] === siteName && values[i][6] === today && !values[i][4]) {
+    if (norm(values[i][0]) === norm(name) && norm(values[i][1]) === norm(siteName) && values[i][6] === today && !values[i][4]) {
       return { ok: false, error: "You already marked On Duty today. Please mark Off Duty instead." };
     }
   }
@@ -99,7 +104,7 @@ function markOffDuty(sheet, data) {
   var values = sheet.getDataRange().getValues();
   var rowNum = -1;
   for (var i = values.length - 1; i >= 1; i--) {
-    if (values[i][0] === name && values[i][1] === siteName && values[i][6] === today && !values[i][4]) {
+    if (norm(values[i][0]) === norm(name) && norm(values[i][1]) === norm(siteName) && values[i][6] === today && !values[i][4]) {
       rowNum = i + 1; // 1-indexed sheet row
       break;
     }
@@ -123,7 +128,7 @@ function doGet(e) {
     var today = todayDateStr();
     var values = sheet.getDataRange().getValues();
     for (var i = values.length - 1; i >= 1; i--) {
-      if (values[i][0] === name && values[i][1] === siteName && values[i][6] === today) {
+      if (norm(values[i][0]) === norm(name) && norm(values[i][1]) === norm(siteName) && values[i][6] === today) {
         var offDuty = values[i][4];
         return jsonOut({
           ok: true,

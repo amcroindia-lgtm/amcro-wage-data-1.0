@@ -19,7 +19,7 @@ const SHEETS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbwdyoaLKPnDv
 // Separate Google Sheet + separate Apps Script deployment for Supervisor Attendance.
 // Deploy apps-script/AttendanceCode.gs on your NEW attendance sheet, then paste the
 // resulting /exec URL here.
-const ATTENDANCE_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbyW3TWRV3uN0QCCnBhyO4D6JLq1zR3w8nMU7dTdsMmjIay-S2hTjm6_xRG9zD9NsfUSfA/exec";
+const ATTENDANCE_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxNPm_ibFz2szh7Gi9QK_p0C8h12s634GCbnwveZQkFDvs9nzIjGc8t9HslhsT8hOuAaw/exec";
 
 async function apiPost(body) {
   const res = await fetch(SHEETS_WEBHOOK_URL, {
@@ -627,6 +627,10 @@ function SupervisorAttendance({ onBack }) {
     setPhoto(null);
   };
 
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter" && !locked) handleCheck();
+  };
+
   return (
     <div className="screen">
       <TopBar title="Supervisor Attendance" subtitle={APP_NAME} onBack={onBack} />
@@ -640,22 +644,18 @@ function SupervisorAttendance({ onBack }) {
             value={name}
             disabled={locked}
             onChange={(e) => setName(e.target.value)}
+            onKeyDown={handleKeyDown}
           />
           <label className="attend-label">Site Name</label>
           <input
             className="field-input"
-            list="attend-site-list"
             type="text"
             placeholder="Site you're currently posted at"
             value={siteName}
             disabled={locked}
             onChange={(e) => setSiteName(e.target.value)}
+            onKeyDown={handleKeyDown}
           />
-          <datalist id="attend-site-list">
-            {SITES.map((s) => (
-              <option key={s.id} value={s.name} />
-            ))}
-          </datalist>
 
           {!locked ? (
             <button className="save-btn attend-continue-btn" onClick={handleCheck} disabled={checking}>
