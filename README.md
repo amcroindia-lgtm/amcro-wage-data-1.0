@@ -38,40 +38,6 @@ To change these, edit the `SITES` array and `ADMIN_PASSCODE` constant near the t
 A: Site | B: Date | C: Worker Name | D: Site Name | E: Work Type | F: Wage | G: Payment Status
 ```
 
-## Supervisor Attendance (new section)
-This is a **separate feature with its own Google Sheet and its own Apps Script deployment** — it does not touch your wage-tracking Sheet at all.
-
-### What it does
-- Any supervisor opens the "Supervisor Attendance" card on the home screen.
-- Enters their **Name** and **Site Name**.
-- **Morning:** taps to click a photo of the site, then taps **Mark On Duty**. The current time is captured automatically.
-- **Evening:** comes back, enters the same name + site, clicks a photo of the work done, then taps **Mark Off Duty**. Time captured automatically again.
-- Everything writes straight to a new Google Sheet tab called `Attendance`, with columns:
-  ```
-  A: Name | B: Site Name | C: On Duty Timing | D: Picture at Start (PAS) | E: Off Duty Timing | F: Picture at End (PAE) | G: Date
-  ```
-  (Column G is a helper column the script uses to match a person's morning row to their evening row each day — you can ignore or hide it.)
-- Photos are uploaded to a Drive folder called **"AMCRO Attendance Photos"** and the Sheet cell gets a clickable link to open the photo — Sheets can't store real embedded images from a script, so a link is the standard, reliable approach.
-- The app checks the Sheet before showing buttons, so a supervisor can't mark On Duty twice or mark Off Duty before On Duty.
-
-### One-time setup (you do this once)
-1. Go to sheets.google.com → create a **brand new blank Sheet** (e.g. "AMCRO Attendance"). Don't reuse your wage-tracking sheet.
-2. In that new Sheet: **Extensions → Apps Script**.
-3. Delete any placeholder code, then paste in the entire contents of `apps-script/AttendanceCode.gs` from this folder.
-4. **Deploy → New deployment** → gear icon → type: **Web app** → Execute as **Me** → Who has access: **Anyone** → **Deploy** → approve the Google authorization prompts.
-5. Copy the Web app URL shown (ends in `/exec`).
-6. In `src/App.jsx`, find:
-   ```js
-   const ATTENDANCE_WEBHOOK_URL = "PASTE_YOUR_ATTENDANCE_WEBAPP_URL_HERE";
-   ```
-   Replace the placeholder with your URL, keeping the quotes.
-7. Push the updated files to GitHub — Vercel auto-redeploys.
-
-You don't need to manually create the `Attendance` tab or the Drive photo folder — the script creates both automatically on first use.
-
-### If a supervisor sees "Attendance sheet isn't connected yet"
-Step 6 above hasn't been done — the placeholder URL is still in the code.
-
 ## Making future changes
 Since this is now a real deployed site, not a live-editable Claude artifact:
 1. Tell me what to change

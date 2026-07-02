@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Plus, Trash2, ChevronLeft, Building2, Calendar, IndianRupee, Users,
-  ClipboardList, Download, Check, AlertCircle, X, Lock, Delete, RefreshCw, Camera, UserCheck,
+  ClipboardList, Download, Check, AlertCircle, X, Lock, Delete, RefreshCw, UserCheck,
 } from "lucide-react";
+import AttendancePage from "./AttendancePage";
 
 const APP_NAME = "AMCRO INDIA WMS";
 const APP_SUBTITLE = "Worker Management System";
@@ -15,11 +16,6 @@ const SITES = [
 const ADMIN_PASSCODE = "810128";
 
 const SHEETS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbwdyoaLKPnDvu64okpbbooRDCIBBk_xqKVmAuE6-cD-oAaaXfPyokb2RSGpGGnF3UPRhg/exec";
-
-// Separate Google Sheet + separate Apps Script deployment for Supervisor Attendance.
-// Deploy apps-script/AttendanceCode.gs on your NEW attendance sheet, then paste the
-// resulting /exec URL here.
-const ATTENDANCE_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxNPm_ibFz2szh7Gi9QK_p0C8h12s634GCbnwveZQkFDvs9nzIjGc8t9HslhsT8hOuAaw/exec";
 
 async function apiPost(body) {
   const res = await fetch(SHEETS_WEBHOOK_URL, {
@@ -77,60 +73,6 @@ async function listAllEntries() {
 
 async function updateRowStatus(siteName, date, rowIndex, status) {
   return apiPost({ action: "setStatus", site: siteName, date, rowIndex, status: status === "paid" ? "Paid" : "Unpaid" });
-}
-
-/* ---------- Supervisor Attendance API (separate Sheet + separate deployment) ---------- */
-
-async function attendancePost(body) {
-  const res = await fetch(ATTENDANCE_WEBHOOK_URL, {
-    method: "POST",
-    redirect: "follow",
-    headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify(body),
-  });
-  const text = await res.text();
-  if (!res.ok) throw new Error(`HTTP ${res.status}: ${text.slice(0, 200)}`);
-  let parsed;
-  try { parsed = JSON.parse(text); } catch { throw new Error(`Unexpected response: ${text.slice(0, 200)}`); }
-  if (!parsed || parsed.ok !== true) throw new Error(parsed?.error || "Unknown error from script");
-  return parsed;
-}
-
-async function attendanceGet(params) {
-  const url = new URL(ATTENDANCE_WEBHOOK_URL);
-  Object.entries(params || {}).forEach(([k, v]) => url.searchParams.set(k, v));
-  const res = await fetch(url.toString(), { method: "GET", redirect: "follow" });
-  const text = await res.text();
-  if (!res.ok) throw new Error(`HTTP ${res.status}: ${text.slice(0, 200)}`);
-  let parsed;
-  try { parsed = JSON.parse(text); } catch { throw new Error(`Unexpected response: ${text.slice(0, 200)}`); }
-  if (!parsed || parsed.ok !== true) throw new Error(parsed?.error || "Unknown error from script");
-  return parsed;
-}
-
-// Resizes/compresses a captured photo in-browser before upload, so mobile camera
-// shots (often 3-8MB) don't turn into huge, slow Apps Script requests.
-function resizeImageFile(file, maxDim = 1280, quality = 0.72) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const img = new Image();
-      img.onload = () => {
-        let { width, height } = img;
-        if (width > height && width > maxDim) { height = Math.round((height * maxDim) / width); width = maxDim; }
-        else if (height >= width && height > maxDim) { width = Math.round((width * maxDim) / height); height = maxDim; }
-        const canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
-        canvas.getContext("2d").drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL("image/jpeg", quality));
-      };
-      img.onerror = () => reject(new Error("Could not read photo."));
-      img.src = e.target.result;
-    };
-    reader.onerror = () => reject(new Error("Could not read photo."));
-    reader.readAsDataURL(file);
-  });
 }
 
 const todayStr = () => {
@@ -288,7 +230,7 @@ function RoleGate({ onPickRole }) {
           </div>
           <div className="gate-card-text">
             <div className="gate-card-title">Supervisor Attendance</div>
-            <div className="gate-card-desc">Mark On Duty / Off Duty with a site photo</div>
+            <div className="gate-card-desc">Mark On Duty / Off Duty with site photo</div>
           </div>
         </button>
       </div>
@@ -480,232 +422,6 @@ function SupervisorEntry({ site, onBack }) {
           </button>
         </div>
       )}
-
-      {toast && (
-        <div className={`toast ${toast.type}`}>
-          {toast.type === "success" ? <Check size={16} /> : <AlertCircle size={16} />}
-          <span>{toast.msg}</span>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ---------- Supervisor Attendance ---------- */
-
-function PhotoCapture({ label, retakeLabel, photo, onCapture, disabled }) {
-  const inputRef = useRef(null);
-  const [busy, setBusy] = useState(false);
-
-  const handleFile = async (e) => {
-    const file = e.target.files && e.target.files[0];
-    e.target.value = ""; // allow picking the same file again later
-    if (!file) return;
-    setBusy(true);
-    try {
-      const dataUrl = await resizeImageFile(file);
-      onCapture(dataUrl);
-    } catch {
-      // ignore; user can just retry
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="photo-capture">
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        style={{ display: "none" }}
-        onChange={handleFile}
-      />
-      {photo ? (
-        <div className="photo-preview-wrap">
-          <img src={photo} alt="Captured" className="photo-preview" />
-          {!disabled && (
-            <button type="button" className="photo-retake-btn" onClick={() => inputRef.current.click()}>
-              <RefreshCw size={13} /> {retakeLabel || "Retake photo"}
-            </button>
-          )}
-        </div>
-      ) : (
-        <button type="button" className="photo-capture-btn" onClick={() => inputRef.current.click()} disabled={disabled || busy}>
-          <Camera size={19} /> {busy ? "Processing…" : label}
-        </button>
-      )}
-    </div>
-  );
-}
-
-function SupervisorAttendance({ onBack }) {
-  const [name, setName] = useState("");
-  const [siteName, setSiteName] = useState("");
-  const [locked, setLocked] = useState(false);
-  const [checking, setChecking] = useState(false);
-  const [status, setStatus] = useState(null); // null | "none" | "onduty" | "completed"
-  const [onDutyTime, setOnDutyTime] = useState(null);
-  const [offDutyTime, setOffDutyTime] = useState(null);
-  const [photo, setPhoto] = useState(null);
-  const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState(null);
-
-  const showToast = (type, msg, ms = 3200) => {
-    setToast({ type, msg });
-    setTimeout(() => setToast(null), ms);
-  };
-
-  const refreshStatus = async () => {
-    const res = await attendanceGet({ action: "getStatus", name: name.trim(), siteName: siteName.trim() });
-    setStatus(res.status);
-    setOnDutyTime(res.onDutyTime || null);
-    setOffDutyTime(res.offDutyTime || null);
-  };
-
-  const handleCheck = async () => {
-    if (!name.trim() || !siteName.trim()) {
-      showToast("error", "Enter your name and site name first.");
-      return;
-    }
-    if (ATTENDANCE_WEBHOOK_URL.indexOf("PASTE_YOUR") === 0) {
-      showToast("error", "Attendance sheet isn't connected yet — add the webhook URL in App.jsx.", 5000);
-      return;
-    }
-    setChecking(true);
-    try {
-      await refreshStatus();
-      setLocked(true);
-      setPhoto(null);
-    } catch (e) {
-      showToast("error", `Could not check status: ${e.message || "unknown error"}`, 5000);
-    } finally {
-      setChecking(false);
-    }
-  };
-
-  const handleMarkOnDuty = async () => {
-    if (!photo) {
-      showToast("error", "Take a photo of the site first.");
-      return;
-    }
-    setSaving(true);
-    try {
-      await attendancePost({ action: "markOnDuty", name: name.trim(), siteName: siteName.trim(), photo });
-      showToast("success", "On Duty marked — saved to the Attendance sheet.");
-      setPhoto(null);
-      await refreshStatus();
-    } catch (e) {
-      showToast("error", e.message || "Failed to save", 5000);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleMarkOffDuty = async () => {
-    if (!photo) {
-      showToast("error", "Take a photo of the completed work first.");
-      return;
-    }
-    setSaving(true);
-    try {
-      await attendancePost({ action: "markOffDuty", name: name.trim(), siteName: siteName.trim(), photo });
-      showToast("success", "Off Duty marked. Have a good evening!");
-      setPhoto(null);
-      await refreshStatus();
-    } catch (e) {
-      showToast("error", e.message || "Failed to save", 5000);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const editDetails = () => {
-    setLocked(false);
-    setStatus(null);
-    setPhoto(null);
-  };
-
-  const handleKeyDown = (e) => {
-    if (e.key === "Enter" && !locked) handleCheck();
-  };
-
-  return (
-    <div className="screen">
-      <TopBar title="Supervisor Attendance" subtitle={APP_NAME} onBack={onBack} />
-      <div className="content">
-        <div className="attend-card">
-          <label className="attend-label">Name of Supervisor</label>
-          <input
-            className="field-input"
-            type="text"
-            placeholder="Your full name"
-            value={name}
-            disabled={locked}
-            onChange={(e) => setName(e.target.value)}
-            onKeyDown={handleKeyDown}
-          />
-          <label className="attend-label">Site Name</label>
-          <input
-            className="field-input"
-            type="text"
-            placeholder="Site you're currently posted at"
-            value={siteName}
-            disabled={locked}
-            onChange={(e) => setSiteName(e.target.value)}
-            onKeyDown={handleKeyDown}
-          />
-
-          {!locked ? (
-            <button className="save-btn attend-continue-btn" onClick={handleCheck} disabled={checking}>
-              {checking ? "Checking…" : "Continue"}
-            </button>
-          ) : (
-            <button type="button" className="attend-edit-link" onClick={editDetails}>
-              Not you? Edit name / site
-            </button>
-          )}
-        </div>
-
-        {locked && status === "none" && (
-          <div className="attend-card">
-            <div className="attend-step-title">Morning check-in</div>
-            <p className="attend-step-desc">Click a photo of the site, then mark On Duty. This is timestamped automatically.</p>
-            <PhotoCapture label="Click picture of the site" photo={photo} onCapture={setPhoto} disabled={saving} />
-            <button className="save-btn" onClick={handleMarkOnDuty} disabled={saving}>
-              {saving ? "Saving…" : "Mark On Duty"}
-            </button>
-          </div>
-        )}
-
-        {locked && status === "onduty" && (
-          <div className="attend-card">
-            <div className="attend-status-banner onduty">
-              <Check size={14} /> On Duty since {onDutyTime}
-            </div>
-            <div className="attend-step-title">Evening check-out</div>
-            <p className="attend-step-desc">Click a photo of the work done today, then mark Off Duty.</p>
-            <PhotoCapture label="Click picture of work done" photo={photo} onCapture={setPhoto} disabled={saving} />
-            <button className="save-btn" onClick={handleMarkOffDuty} disabled={saving}>
-              {saving ? "Saving…" : "Mark Off Duty"}
-            </button>
-          </div>
-        )}
-
-        {locked && status === "completed" && (
-          <div className="attend-card">
-            <div className="attend-status-banner done">
-              <Check size={14} /> Attendance complete for today
-            </div>
-            <p className="attend-step-desc">
-              On Duty: <strong>{onDutyTime}</strong>
-              <br />
-              Off Duty: <strong>{offDutyTime}</strong>
-            </p>
-          </div>
-        )}
-      </div>
 
       {toast && (
         <div className={`toast ${toast.type}`}>
@@ -989,7 +705,7 @@ export default function App() {
   } else if (role === "owner" && adminUnlocked) {
     screen = <OwnerDashboard onBack={reset} />;
   } else if (role === "attendance") {
-    screen = <SupervisorAttendance onBack={reset} />;
+    screen = <AttendancePage onBack={reset} />;
   }
 
   return (
@@ -1102,7 +818,7 @@ html, body { background: var(--bg); }
 .gate-card-icon { width: 48px; height: 48px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .gate-card-icon.sup { background: var(--sky-soft); color: var(--blue); }
 .gate-card-icon.own { background: var(--navy); color: var(--sky); }
-.gate-card-icon.att { background: var(--success-soft); color: var(--success); }
+.gate-card-icon.att { background: #E7F7EE; color: #0E8A4B; }
 .gate-card-title { font-weight: 800; font-size: 15px; margin-bottom: 2px; color: var(--ink); }
 .gate-card-desc { font-size: 13px; color: var(--ink-soft); line-height: 1.4; }
 .gate-footnote { text-align: center; font-size: 12px; color: var(--ink-soft); margin: 0; }
@@ -1287,40 +1003,4 @@ html, body { background: var(--bg); }
   .stat-cards { grid-template-columns: 1fr 1fr; }
   .stat-card:last-child { grid-column: span 2; }
 }
-
-.attend-card {
-  background: var(--white); border: 1px solid var(--line); border-radius: var(--radius);
-  padding: 18px; display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px;
-}
-.attend-label { font-size: 12.5px; font-weight: 800; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.03em; margin-top: 4px; }
-.attend-label:first-child { margin-top: 0; }
-.attend-continue-btn { margin-top: 6px; }
-.attend-edit-link {
-  align-self: flex-start; background: none; border: none; color: var(--blue); font-weight: 700;
-  font-size: 13px; cursor: pointer; padding: 2px 0; text-decoration: underline;
-}
-.attend-step-title { font-size: 15px; font-weight: 900; color: var(--navy); }
-.attend-step-desc { font-size: 13px; color: var(--ink-soft); margin: -4px 0 2px; line-height: 1.5; }
-.attend-status-banner {
-  display: flex; align-items: center; gap: 8px; padding: 10px 13px; border-radius: 10px;
-  font-size: 13.5px; font-weight: 800; margin-bottom: 4px;
-}
-.attend-status-banner.onduty { background: var(--sky-soft); color: var(--blue); }
-.attend-status-banner.done { background: var(--success-soft); color: var(--success); }
-
-.photo-capture { display: flex; flex-direction: column; gap: 8px; }
-.photo-capture-btn {
-  display: flex; align-items: center; justify-content: center; gap: 8px;
-  width: 100%; padding: 16px; border: 1.5px dashed var(--blue); border-radius: var(--radius);
-  background: var(--sky-soft); color: var(--blue); font-weight: 800; font-size: 14px; cursor: pointer;
-}
-.photo-capture-btn:hover { background: #D7F0FF; }
-.photo-capture-btn:disabled { opacity: 0.6; cursor: default; }
-.photo-preview-wrap { display: flex; flex-direction: column; gap: 8px; align-items: center; }
-.photo-preview { width: 100%; max-height: 260px; object-fit: cover; border-radius: var(--radius); border: 1px solid var(--line); }
-.photo-retake-btn {
-  display: flex; align-items: center; gap: 6px; background: var(--bg); border: 1px solid var(--line);
-  color: var(--ink-soft); font-size: 12.5px; font-weight: 700; padding: 8px 14px; border-radius: 999px; cursor: pointer;
-}
-.photo-retake-btn:hover { background: var(--sky-soft); color: var(--blue); }
 `;
